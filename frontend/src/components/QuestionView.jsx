@@ -7,6 +7,11 @@ export default function QuestionView({
   showAnswer,
   onAnswered,
   aiExplain,
+  onNext,
+  onPrev,
+  hasNext = true,
+  hasPrev = true,
+  onBack,
 }) {
   const [selected, setSelected] = useState([]);
   const [answered, setAnswered] = useState(!!showAnswer);
@@ -111,6 +116,26 @@ export default function QuestionView({
       {aiExplain && typeof aiExplain === "function" && (
         <div style={{ marginTop: 12 }}>
           <AIExplain id={item.id} wrongAnswer={selected} explainer={aiExplain} />
+        </div>
+      )}
+
+      {(onNext || onPrev || onBack) && (
+        <div style={{ marginTop: 22, paddingTop: 16, borderTop: "1px solid var(--border-bottom)", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          {onPrev ? (
+            <button className="btn" onClick={onPrev} disabled={!hasPrev}>
+              ← 이전 문제
+            </button>
+          ) : <div />}
+          {onBack && (
+            <button className="btn ghost" onClick={onBack}>
+              ≡ 목록으로
+            </button>
+          )}
+          {onNext && (
+            <button className="btn primary" onClick={onNext} disabled={!hasNext}>
+              다음 문제 →
+            </button>
+          )}
         </div>
       )}
     </div>
