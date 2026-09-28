@@ -32,7 +32,7 @@ async function getEmbeddings() {
   }));
 }
 
-async function retrieveSimilar(queryText, k = 5, excludeId = null, minScore = 0.35) {
+async function retrieveSimilar(queryText, k = 5, excludeId = null, minScore = 0.45) {
   const all = await getEmbeddings();
   if (all.length === 0) {
     throw new Error("EMBEDDINGS_EMPTY");

@@ -6,18 +6,14 @@ const { retrieveSimilar, questionToText } = require("./embedService");
 // 끝맺음 여유를 더해 문장 중간에 강제로 끊기지 않게 한다.
 const MAX_TOKENS = 500;
 
-const SYSTEM_PROMPT = `너는 친절하고 재치 만점인 대한민국 운전면허 학과시험(필기시험) AI 베테랑 튜터야! 🚗💨
+const SYSTEM_PROMPT = `너는 대한민국 운전면허 학과시험(필기시험) 전문 AI 튜터야.
 
-[답변 스타일 & 톤앤매너]
-- 딱딱한 설명 대신 부드럽고 다정하며 위트(유머) 있는 친근한 말투를 사용한다. (예: "~해요", "~이죠!", "아차, 이건 함정이에요! 😉")
-- 학습자가 기분 좋게 이해하고 외울 수 있도록 재치 있는 조언과 응원을 살짝 곁들인다.
-
-[엄격한 환각(Hallucination) 방지 규칙]
-1. 오직 제시된 [내가 틀린 문제], [공식 원본 해설], 및 [문제은행에서 검색된 관련 근거]에 명시된 사실만을 바탕으로 답변한다.
-2. 제공된 근거에 없는 법규, 범칙금 금액, 벌점, 규칙, 사유를 절대로 지어내거나 추측하여 설명하지 않는다.
-3. 문제의 정답 해설 시, 반드시 문제의 보기 내용과 공식 원본 해설을 최우선 기준으로 작성한다.
-4. 근거가 부족하거나 검색된 내용에 명시되지 않은 질문에는 추측하지 말고 "문제은행 근거 데이터에서 관련 내용을 찾지 못했어요 😅"라고 친절히 안내한다.
-5. 한국어로 부드럽고 간결하게 답변하며, 자연스러운 끝맺음 문장으로 마무리한다.
+[무조건 준수해야 하는 100% 팩트 기반 규칙 (절대적 환각 방지)]
+1. 오직 제공된 [내가 틀린 문제], [공식 원본 해설], 및 [문제은행 관련 근거]에 직접 명시된 글자/사실만을 바탕으로 답변하라.
+2. 제시된 근거에 없는 사실, 법규, 처벌 규정, 시나리오, 사유, 수치를 단 한 문장도 지어내거나 확장 추정(Extrapolation)하지 말라.
+3. [공식 원본 해설]이 존재하면 반드시 공식 원본 해설의 핵심 내용만 요약하여 정답 이유로 설명하라.
+4. 질문 내용이나 오답 이유가 제공된 근거에 명확히 명시되어 있지 않은 경우, 지어내지 말고 반드시 "제시된 문제은행 근거 데이터에서 관련 내용을 찾을 수 없습니다 😅"라고 밝혀라.
+5. 말투는 다정하고 부드럽게 하되, 내용과 팩트는 100% 엄격함을 유지하라.
 
 [시험 구조 상식]
 - 40문항·40분·100점 만점. 1종 보통 70점 이상, 2종 보통 60점 이상 합격.
@@ -52,7 +48,7 @@ function buildExplainPrompt(q, wrongAnswer, similar) {
     ? q.answer.map((a) => `보기${a}`).join(", ")
     : "정보 없음";
 
-  return `다음은 사용자가 아쉽게 틀린 운전면허 필기시험 문제예요. 부드럽고 재치 있게 오답 해설을 작성해 주세요! 😊
+  return `아래 문제 및 공식 해설 데이터만을 바탕으로 오답 해설을 작성해 주세요.
 
 [내가 틀린 문제 - ${q.no}번]
 질문: ${q.question}
@@ -65,13 +61,13 @@ ${q.options.map((o, i) => `  보기${i + 1}: ${o}`).join("\n")}
 [문제은행 관련 근거]
 ${renderContext(similar)}
 
-아래 형식으로 300자 이내로 친근하고 유머러스하게 해설해 주세요:
-1. 정답 이유: 공식 해설을 바탕으로 왜 정답인지 쉽고 부드럽게 설명 💡
-2. 오답 분석: 선택한 오답(${wrongStr})에 낚인 이유를 재치 있게 짚어주기 😅
-3. 핵심 요약: 꼭 기억해야 할 한 줄 꿀팁/암기 포인트 🎯
-4. 추천 복습: 참고근거 문제 번호 (${similar && similar.length ? similar.map(s => s.no + '번').join(', ') : '없음'})
+[답변 작성 형식 (300자 이내)]
+1. 정답 이유: 위 '공식 원본 해설' 및 정답 보기 문구만을 바탕으로 왜 정답인지 설명 (없는 내용을 지어내지 말 것)
+2. 오답 분석: 선택한 오답(${wrongStr})이 왜 정답이 아닌지 보기 문구 대조 설명
+3. 핵심 요약: 공식 해설의 핵심 포인트 1문장 요약
+4. 추천 복습: 참고근거 문항 번호 (${similar && similar.length ? similar.map(s => s.no + '번').join(', ') : '없음'})
 
-* 절대 거짓 법규나 수치를 지어내지 말고, 팩트에 기반하되 유쾌한 톤을 유지해 주세요.`;
+* 경고: [공식 원본 해설] 및 보기에 명시된 내용 외의 법규나 상식을 자의적으로 추정하여 적지 마세요.`;
 }
 
 function buildAskPrompt(query, similar) {
@@ -82,10 +78,10 @@ function buildAskPrompt(query, similar) {
 ${renderContext(similar)}
 
 ${hasSimilar
-  ? "위 [문제은행에서 검색된 관련 근거]에 명시된 팩트만을 바탕으로, 다정하고 위트 있게 답변해 주세요!"
-  : "관련 근거가 없어요. 지어내지 말고 '문제은행 데이터에 해당 내용이 없어 알려드리기 어려워요 😅'라고 친절히 안내해 주세요."}
+  ? "위 [문제은행에서 검색된 관련 근거]에 명시적으로 적혀 있는 글과 사실만을 바탕으로 사용자 질문에 답변해 주세요."
+  : "관련 근거가 없습니다. 절대로 자의적으로 추정하지 말고 '문제은행 데이터에 해당 내용이 없어 알려드리기 어려워요 😅'라고 답변해 주세요."}
 
-300자 이내로 부드럽고 명확하게 작성해 주세요. 절대로 지어낸 수치나 법규를 적지 마세요.`;
+* 경고: 검색된 관련 근거 텍스트에 없는 법규, 수치, 행동 지침을 지어내거나 확장하여 답변하지 마세요.`;
 }
 
 function toSimilarMeta(similar) {
@@ -127,7 +123,7 @@ async function streamChat(prompt, onDelta) {
 }
 
 async function explainWrongQuestion(q, wrongAnswer) {
-  const similar = await retrieveSimilar(questionToText(q), 3, q.id, 0.35);
+  const similar = await retrieveSimilar(questionToText(q), 3, q.id, 0.45);
   const res = await generate({
     prompt: buildExplainPrompt(q, wrongAnswer, similar),
     system: SYSTEM_PROMPT,
@@ -141,13 +137,13 @@ async function explainWrongQuestion(q, wrongAnswer) {
 }
 
 async function explainWrongQuestionStream(q, wrongAnswer, onDelta) {
-  const similar = await retrieveSimilar(questionToText(q), 3, q.id, 0.35);
+  const similar = await retrieveSimilar(questionToText(q), 3, q.id, 0.45);
   await streamChat(buildExplainPrompt(q, wrongAnswer, similar), onDelta);
   return { question_id: q.id, similar: toSimilarMeta(similar) };
 }
 
 async function askFreeForm(query) {
-  const similar = await retrieveSimilar(query, 3, null, 0.35);
+  const similar = await retrieveSimilar(query, 3, null, 0.45);
   const res = await generate({
     prompt: buildAskPrompt(query, similar),
     system: SYSTEM_PROMPT,
@@ -160,7 +156,7 @@ async function askFreeForm(query) {
 }
 
 async function askFreeFormStream(query, onDelta) {
-  const similar = await retrieveSimilar(query, 3, null, 0.35);
+  const similar = await retrieveSimilar(query, 3, null, 0.45);
   await streamChat(buildAskPrompt(query, similar), onDelta);
   return { similar: toSimilarMeta(similar) };
 }
