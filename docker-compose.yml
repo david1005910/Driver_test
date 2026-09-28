@@ -1,0 +1,75 @@
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: driver_test_api
+    working_dir: /app/backend
+    volumes:
+      - ./backend:/app/backend
+      - ./frontend:/app/frontend
+      - ./data:/app/data
+      - api_node_modules:/app/backend/node_modules
+    ports:
+      - "3002:3000"
+    environment:
+      NODE_ENV: development
+      PORT: 3000
+      DB_HOST: db
+      DB_PORT: 3306
+      DB_USER: driver
+      DB_PASSWORD: driver_dev_pass
+      DB_NAME: driver_exam
+      OLLAMA_URL: http://host.docker.internal:11434
+      OLLAMA_EMBED_MODEL: nomic-embed-text
+      OLLAMA_CHAT_MODEL: qwen2.5:3b
+    depends_on:
+      db:
+        condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command: npm run dev
+
+  web:
+    image: node:20-alpine
+    container_name: driver_test_web
+    working_dir: /app/frontend
+    volumes:
+      - ./frontend:/app/frontend
+      - web_node_modules:/app/frontend/node_modules
+    ports:
+      - "5173:5173"
+    environment:
+      CHOKIDAR_USEPOLLING: "true"
+      VITE_API_PROXY: http://api:3000
+    depends_on:
+      - api
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+
+  db:
+    image: mysql:8.4
+    container_name: driver_test_db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root_dev_pass
+      MYSQL_DATABASE: driver_exam
+      MYSQL_USER: driver
+      MYSQL_PASSWORD: driver_dev_pass
+      TZ: Asia/Seoul
+    ports:
+      - "3307:3306"
+    volumes:
+      - driver_db_data:/var/lib/mysql
+      - ./backend/src/sql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-proot_dev_pass"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+volumes:
+  api_node_modules:
+  web_node_modules:
+  driver_db_data:

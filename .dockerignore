@@ -1,0 +1,8 @@
+node_modules
+npm-debug.log
+*.log
+.git
+data/images
+data/bank.json
+.env
+frontend/dist
