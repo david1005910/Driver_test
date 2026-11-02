@@ -147,7 +147,7 @@ function AIExplain({ id, wrongAnswer, explainer }) {
   const [loading, setLoading] = useState(false);
   const [content, setContent] = useState(null);
   const [baseSimilar, setBaseSimilar] = useState(null);
-  const [showChart, setShowChart] = useState(true);
+  const [showChart, setShowChart] = useState(false);
   const [error, setError] = useState(null);
   const [searchMode, setSearchMode] = useState("hybrid");
   const [alpha, setAlpha] = useState(0.6);
@@ -244,6 +244,9 @@ function AIExplain({ id, wrongAnswer, explainer }) {
   return (
     <div>
       <div className="ai-explain-toolbar">
+        <button className="btn ghost" onClick={() => run(searchMode)} disabled={loading}>
+          {loading ? "AI 해설 생성 중..." : content ? "🔄 AI 해설 다시 생성" : "🤖 AI 해설 보기 (RAG)"}
+        </button>
         <div className="rag-mode-buttons compact">
           <button
             type="button"
@@ -297,17 +300,16 @@ function AIExplain({ id, wrongAnswer, explainer }) {
         >
           {showChart ? "📊 막대그래프 숨기기" : "📊 막대그래프 보기"}
         </button>
-        <button className="btn ghost" onClick={() => run(searchMode)} disabled={loading}>
-          {loading ? "AI 해설 생성 중..." : content ? "🔄 AI 해설 다시 생성" : "🤖 AI 해설 보기 (RAG)"}
-        </button>
       </div>
       {error && <div className="error-text">{error}</div>}
-      {showChart && liveSimilar.length > 0 && (
+      {liveSimilar.length > 0 && (
         <div style={{ marginTop: 12 }}>
           <ScoreBarChart
             items={liveSimilar}
             searchMode={searchMode}
             alpha={alpha}
+            expanded={showChart}
+            onToggle={() => setShowChart((v) => !v)}
             title="유사 근거 문제 검색 스코어 (Dense vs Sparse vs Hybrid)"
           />
         </div>

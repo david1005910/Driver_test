@@ -12,8 +12,17 @@ function pct(val) {
   return Math.max(0, Math.min(100, n * 100));
 }
 
-export default function ScoreBarChart({ items, searchMode = "hybrid", alpha = 0.6, title }) {
-  const [expanded, setExpanded] = useState(true);
+export default function ScoreBarChart({
+  items,
+  searchMode = "hybrid",
+  alpha = 0.6,
+  title,
+  expanded: controlledExpanded,
+  onToggle,
+}) {
+  const [internalExpanded, setInternalExpanded] = useState(false);
+  const expanded = controlledExpanded !== undefined ? controlledExpanded : internalExpanded;
+  const toggleExpanded = onToggle || (() => setInternalExpanded((v) => !v));
 
   if (!items || items.length === 0) return null;
 
@@ -24,7 +33,7 @@ export default function ScoreBarChart({ items, searchMode = "hybrid", alpha = 0.
 
   return (
     <div className="score-chart-box">
-      <div className="score-chart-header">
+      <div className="score-chart-header" style={{ marginBottom: expanded ? 10 : 0 }}>
         <div className="score-chart-title-wrap">
           <span className="score-chart-title">
             📊 {title || "RAG 검색 스코어 분석 (Dense vs Sparse vs Hybrid)"}
@@ -38,54 +47,53 @@ export default function ScoreBarChart({ items, searchMode = "hybrid", alpha = 0.
           type="button"
           className="btn ghost small"
           style={{ padding: "4px 10px" }}
-          onClick={() => setExpanded((v) => !v)}
+          onClick={toggleExpanded}
         >
           {expanded ? "그래프 접기 ▲" : "그래프 펼치기 ▼"}
         </button>
       </div>
 
-      {/* 검색 방식 및 Hybrid 스코어 산출 공식 안내 */}
-      <div className="score-method-info">
-        <div>
-          <span className="legend-dot dense" /> <strong>Dense Search</strong>: Ollama{" "}
-          <code>nomic-embed-text</code> 임베딩 벡터 코사인 유사도 (의미·문맥 유사성)
-        </div>
-        <div>
-          <span className="legend-dot sparse" /> <strong>Sparse Search</strong>: <code>Okapi BM25</code>{" "}
-          알고리즘 (한국어 어근 분리 + 2-gram 서브워드 역색인 키워드 매칭)
-        </div>
-        <div>
-          <span className="legend-dot hybrid" /> <strong>Hybrid Score</strong>:{" "}
-          <code>
-            {numAlpha.toFixed(1)} × Dense + {(1 - numAlpha).toFixed(1)} × Sparse
-          </code>{" "}
-          (의미 유사도 {denseWeightPct}% + 키워드 정확도 {sparseWeightPct}% 결합)
-        </div>
-      </div>
-
-      {hasBelowThreshold && (
-        <div className="score-threshold-warn">
-          ⚠️ 검색된 상위 후보들의 유사도가 RAG 기준치보다 낮아 답변 환각 방지를 위해 참고용 스코어만 표시합니다.
-        </div>
-      )}
-
-      <div className="score-legend">
-        <span className={`legend-item ${searchMode === "hybrid" ? "active" : ""}`}>
-          <span className="legend-dot hybrid" />
-          Hybrid 종합 점수 ({denseWeightPct}:{sparseWeightPct})
-        </span>
-        <span className={`legend-item ${searchMode === "dense" ? "active" : ""}`}>
-          <span className="legend-dot dense" />
-          Dense 점수 (Cosine)
-        </span>
-        <span className={`legend-item ${searchMode === "sparse" ? "active" : ""}`}>
-          <span className="legend-dot sparse" />
-          Sparse 점수 (BM25)
-        </span>
-      </div>
-
       {expanded && (
         <>
+          {/* 검색 방식 및 Hybrid 스코어 산출 공식 안내 */}
+          <div className="score-method-info">
+            <div>
+              <span className="legend-dot dense" /> <strong>Dense Search</strong>: Ollama{" "}
+              <code>nomic-embed-text</code> 임베딩 벡터 코사인 유사도 (의미·문맥 유사성)
+            </div>
+            <div>
+              <span className="legend-dot sparse" /> <strong>Sparse Search</strong>: <code>Okapi BM25</code>{" "}
+              알고리즘 (한국어 어근 분리 + 2-gram 서브워드 역색인 키워드 매칭)
+            </div>
+            <div>
+              <span className="legend-dot hybrid" /> <strong>Hybrid Score</strong>:{" "}
+              <code>
+                {numAlpha.toFixed(1)} × Dense + {(1 - numAlpha).toFixed(1)} × Sparse
+              </code>{" "}
+              (의미 유사도 {denseWeightPct}% + 키워드 정확도 {sparseWeightPct}% 결합)
+            </div>
+          </div>
+
+          {hasBelowThreshold && (
+            <div className="score-threshold-warn">
+              ⚠️ 검색된 상위 후보들의 유사도가 RAG 기준치보다 낮아 답변 환각 방지를 위해 참고용 스코어만 표시합니다.
+            </div>
+          )}
+
+          <div className="score-legend">
+            <span className={`legend-item ${searchMode === "hybrid" ? "active" : ""}`}>
+              <span className="legend-dot hybrid" />
+              Hybrid 종합 점수 ({denseWeightPct}:{sparseWeightPct})
+            </span>
+            <span className={`legend-item ${searchMode === "dense" ? "active" : ""}`}>
+              <span className="legend-dot dense" />
+              Dense 점수 (Cosine)
+            </span>
+            <span className={`legend-item ${searchMode === "sparse" ? "active" : ""}`}>
+              <span className="legend-dot sparse" />
+              Sparse 점수 (BM25)
+            </span>
+          </div>
           {/* 1. 문항별 수직 막대그래프 (Grouped Vertical Bar Chart) */}
           <div className="vchart-wrap">
             <div className="vchart-grid">
