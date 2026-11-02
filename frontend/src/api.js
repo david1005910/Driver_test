@@ -20,7 +20,7 @@ export const post = (path, body) => request(path, { method: "POST", body: JSON.s
 export const del = (path) => request(path, { method: "DELETE" });
 
 export function postStream(path, body, handlers = {}) {
-  const { onDelta } = handlers;
+  const { onDelta, onMeta } = handlers;
   return fetch(`${BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -53,11 +53,18 @@ export function postStream(path, body, handlers = {}) {
           continue;
         }
         if (payload.type === "delta" && onDelta) onDelta(payload.content);
-        else if (payload.type === "done") meta = payload;
+        else if (payload.type === "meta") {
+          meta = payload;
+          if (onMeta) onMeta(payload);
+        } else if (payload.type === "done") meta = payload;
         else if (payload.type === "error") throw new Error(payload.message);
       }
     }
-    return { similar: meta ? meta.similar : null };
+    return {
+      similar: meta ? meta.similar : null,
+      searchMode: meta?.searchMode || "hybrid",
+      alpha: meta?.alpha ?? 0.6,
+    };
   });
 }
 

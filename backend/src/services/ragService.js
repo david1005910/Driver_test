@@ -31,7 +31,7 @@ function renderContext(items) {
         ? it.options.map((opt, idx) => `  보기${idx + 1}: ${opt}`).join("\n")
         : "  보기 없음";
       const explanationStr = it.explanation ? `\n  공식해설: ${it.explanation}` : "";
-      return `[참고근거 ${i + 1}] (${it.no}번 문제)
+      return `[참고근거 ${i + 1}] (${it.no}번 문제 | Hybrid: ${(it.hybridScore * 100).toFixed(1)}%, Dense: ${(it.denseScore * 100).toFixed(1)}%, Sparse: ${(it.sparseScore * 100).toFixed(1)}%)
 질문: ${it.question}
 ${optionsStr}
 정답: ${answerStr}${explanationStr}`;
@@ -91,7 +91,20 @@ ${hasSimilar
 }
 
 function toSimilarMeta(similar) {
-  return (similar || []).map((s) => ({ question_id: s.question_id, no: s.no, score: s.score }));
+  return (similar || []).map((s) => ({
+    question_id: s.question_id,
+    no: s.no,
+    question: s.question,
+    score: s.score,
+    denseScore: s.denseScore,
+    sparseScore: s.sparseScore,
+    hybridScore: s.hybridScore,
+    rawBm25: s.rawBm25,
+    matchedKeywords: s.matchedKeywords || [],
+    searchMode: s.searchMode || "hybrid",
+    alpha: s.alpha ?? 0.6,
+    belowThreshold: !!s.belowThreshold,
+  }));
 }
 
 async function streamChat(prompt, onDelta) {
@@ -128,43 +141,120 @@ async function streamChat(prompt, onDelta) {
   }
 }
 
-async function explainWrongQuestion(q, wrongAnswer) {
-  const similar = await retrieveSimilar(questionToText(q), 3, q.id, 0.45);
+async function retrieveForRag(queryText, k = 4, excludeId = null, searchOpts = {}) {
+  const searchMode = searchOpts.searchMode || "hybrid";
+  const alpha = typeof searchOpts.alpha === "number" ? searchOpts.alpha : 0.6;
+  const similar = await retrieveSimilar(queryText, k, excludeId, 0.45, { searchMode, alpha });
+  if (similar.length > 0) {
+    return { contextItems: similar, chartItems: similar };
+  }
+  // 임계값 미달 시에도 막대그래프 확인을 위해 상위 후보를 반환하되, LLM 컨텍스트에는 넣지 않음
+  const fallback = await retrieveSimilar(queryText, k, excludeId, 0, {
+    searchMode,
+    alpha,
+    includeLowScore: true,
+  });
+  return {
+    contextItems: [],
+    chartItems: fallback.map((it) => ({ ...it, belowThreshold: true })),
+  };
+}
+
+async function explainWrongQuestion(q, wrongAnswer, searchOpts = {}) {
+  const k = searchOpts.k || 4;
+  const { contextItems, chartItems } = await retrieveForRag(questionToText(q), k, q.id, searchOpts);
   const res = await generate({
-    prompt: buildExplainPrompt(q, wrongAnswer, similar),
+    prompt: buildExplainPrompt(q, wrongAnswer, contextItems),
     system: SYSTEM_PROMPT,
     options: { num_predict: MAX_TOKENS },
   });
   return {
     question_id: q.id,
-    similar: toSimilarMeta(similar),
+    similar: toSimilarMeta(chartItems),
+    searchMode: searchOpts.searchMode || "hybrid",
+    alpha: typeof searchOpts.alpha === "number" ? searchOpts.alpha : 0.6,
     answer: res.message ? res.message.content : "",
   };
 }
 
-async function explainWrongQuestionStream(q, wrongAnswer, onDelta) {
-  const similar = await retrieveSimilar(questionToText(q), 3, q.id, 0.45);
-  await streamChat(buildExplainPrompt(q, wrongAnswer, similar), onDelta);
-  return { question_id: q.id, similar: toSimilarMeta(similar) };
+async function explainWrongQuestionStream(q, wrongAnswer, onDelta, searchOpts = {}, onMeta = null) {
+  const k = searchOpts.k || 4;
+  const { contextItems, chartItems } = await retrieveForRag(questionToText(q), k, q.id, searchOpts);
+  const similarMeta = toSimilarMeta(chartItems);
+  const metaPayload = {
+    question_id: q.id,
+    similar: similarMeta,
+    searchMode: searchOpts.searchMode || "hybrid",
+    alpha: typeof searchOpts.alpha === "number" ? searchOpts.alpha : 0.6,
+  };
+  if (onMeta) onMeta(metaPayload);
+  await streamChat(buildExplainPrompt(q, wrongAnswer, contextItems), onDelta);
+  return metaPayload;
 }
 
-async function askFreeForm(query) {
-  const similar = await retrieveSimilar(query, 3, null, 0.45);
+async function askFreeForm(query, searchOpts = {}) {
+  const k = searchOpts.k || 4;
+  const { contextItems, chartItems } = await retrieveForRag(query, k, null, searchOpts);
   const res = await generate({
-    prompt: buildAskPrompt(query, similar),
+    prompt: buildAskPrompt(query, contextItems),
     system: SYSTEM_PROMPT,
     options: { num_predict: MAX_TOKENS },
   });
   return {
-    similar: toSimilarMeta(similar),
+    similar: toSimilarMeta(chartItems),
+    searchMode: searchOpts.searchMode || "hybrid",
+    alpha: typeof searchOpts.alpha === "number" ? searchOpts.alpha : 0.6,
     answer: res.message ? res.message.content : "",
   };
 }
 
-async function askFreeFormStream(query, onDelta) {
-  const similar = await retrieveSimilar(query, 3, null, 0.45);
-  await streamChat(buildAskPrompt(query, similar), onDelta);
-  return { similar: toSimilarMeta(similar) };
+async function askFreeFormStream(query, onDelta, searchOpts = {}, onMeta = null) {
+  const k = searchOpts.k || 4;
+  const { contextItems, chartItems } = await retrieveForRag(query, k, null, searchOpts);
+  const similarMeta = toSimilarMeta(chartItems);
+  const metaPayload = {
+    similar: similarMeta,
+    searchMode: searchOpts.searchMode || "hybrid",
+    alpha: typeof searchOpts.alpha === "number" ? searchOpts.alpha : 0.6,
+  };
+  if (onMeta) onMeta(metaPayload);
+  await streamChat(buildAskPrompt(query, contextItems), onDelta);
+  return metaPayload;
+}
+
+async function searchQuestions(query, searchOpts = {}) {
+  const k = searchOpts.k || 5;
+  const searchMode = searchOpts.searchMode || "hybrid";
+  const alpha = typeof searchOpts.alpha === "number" ? searchOpts.alpha : 0.6;
+  const items = await retrieveSimilar(query, k, null, 0, {
+    searchMode,
+    alpha,
+    includeLowScore: true,
+  });
+  return {
+    query,
+    searchMode,
+    alpha,
+    similar: toSimilarMeta(items),
+  };
+}
+
+async function getQuestionScores(q, searchOpts = {}) {
+  const k = searchOpts.k || 4;
+  const searchMode = searchOpts.searchMode || "hybrid";
+  const alpha = typeof searchOpts.alpha === "number" ? searchOpts.alpha : 0.6;
+  const items = await retrieveSimilar(questionToText(q), k, q.id, 0, {
+    searchMode,
+    alpha,
+    includeLowScore: true,
+  });
+  return {
+    question_id: q.id,
+    no: q.no,
+    searchMode,
+    alpha,
+    similar: toSimilarMeta(items),
+  };
 }
 
 async function getQuestionById(id) {
@@ -190,5 +280,7 @@ module.exports = {
   explainWrongQuestionStream,
   askFreeForm,
   askFreeFormStream,
+  searchQuestions,
+  getQuestionScores,
   getQuestionById,
 };

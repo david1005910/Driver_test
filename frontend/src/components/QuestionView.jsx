@@ -1,6 +1,7 @@
-import React, { useRef, useState } from "react";
-import { imageUrl } from "../api";
+import React, { useEffect, useMemo, useRef, useState } from "react";
+import { get, imageUrl } from "../api";
 import { openQuestion } from "../nav";
+import ScoreBarChart from "./ScoreBarChart.jsx";
 
 export default function QuestionView({
   q: item,
@@ -145,20 +146,94 @@ export default function QuestionView({
 function AIExplain({ id, wrongAnswer, explainer }) {
   const [loading, setLoading] = useState(false);
   const [content, setContent] = useState(null);
+  const [baseSimilar, setBaseSimilar] = useState(null);
+  const [showChart, setShowChart] = useState(true);
   const [error, setError] = useState(null);
+  const [searchMode, setSearchMode] = useState("hybrid");
+  const [alpha, setAlpha] = useState(0.6);
   const bufRef = useRef("");
 
-  async function run() {
+  useEffect(() => {
+    let alive = true;
+    get(`/rag/scores/${id}?k=4`)
+      .then((res) => {
+        if (alive && res && res.similar) {
+          setBaseSimilar(res.similar);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [id]);
+
+  const liveSimilar = useMemo(() => {
+    const raw = (content && content.similar) || baseSimilar;
+    if (!raw || !raw.length) return [];
+    const recalc = raw.map((it) => {
+      const d = Number(it.denseScore ?? it.score ?? 0);
+      const s = Number(it.sparseScore ?? 0);
+      const h = Number((alpha * d + (1 - alpha) * s).toFixed(4));
+      const active = searchMode === "dense" ? d : searchMode === "sparse" ? s : h;
+      return {
+        ...it,
+        denseScore: d,
+        sparseScore: s,
+        hybridScore: h,
+        score: active,
+        searchMode,
+        alpha,
+      };
+    });
+    recalc.sort((a, b) => b.score - a.score);
+    return recalc;
+  }, [content, baseSimilar, alpha, searchMode]);
+
+  const topItem = liveSimilar[0] || null;
+  const topHybrid = topItem ? topItem.hybridScore : null;
+  const topDense = topItem ? topItem.denseScore : null;
+  const topSparse = topItem ? topItem.sparseScore : null;
+
+  async function run(modeOverride) {
+    const activeMode = typeof modeOverride === "string" ? modeOverride : searchMode;
     setLoading(true);
     setError(null);
     setContent(null);
     bufRef.current = "";
+    let latestSimilar = baseSimilar;
     try {
-      const meta = await explainer(id, wrongAnswer, (chunk) => {
-        bufRef.current += chunk;
-        setContent({ answer: bufRef.current, similar: null });
+      const meta = await explainer(
+        id,
+        wrongAnswer,
+        (chunk) => {
+          bufRef.current += chunk;
+          setContent({
+            answer: bufRef.current,
+            similar: latestSimilar,
+            searchMode: activeMode,
+            alpha,
+          });
+        },
+        {
+          searchMode: activeMode,
+          alpha,
+          onMeta: (m) => {
+            latestSimilar = m.similar || baseSimilar;
+            setContent({
+              answer: bufRef.current || "유사 문항 스코어 분석 완료! AI 해설을 작성하고 있습니다...",
+              similar: latestSimilar,
+              searchMode: m.searchMode || activeMode,
+              alpha: m.alpha ?? alpha,
+            });
+          },
+        }
+      );
+      setContent({
+        answer: bufRef.current,
+        similar: meta ? meta.similar || latestSimilar : latestSimilar,
+        searchMode: meta?.searchMode || activeMode,
+        alpha: meta?.alpha ?? alpha,
       });
-      setContent({ answer: bufRef.current, similar: meta ? meta.similar : null });
     } catch (e) {
       setError(e.message || "실패");
     } finally {
@@ -166,31 +241,83 @@ function AIExplain({ id, wrongAnswer, explainer }) {
     }
   }
 
-  if (content) {
-    return (
-      <div className="ai-explain">
-        <h4>🤖 AI 튜터 해설</h4>
-        {error && <div className="error-text">{error}</div>}
-        <div className="ai-answer">{content.answer || (loading ? "생성 중..." : "")}</div>
-        {content.similar && content.similar.length > 0 && (
-          <div className="ai-similar">
-            <strong>함께 복습하면 좋은 문제:</strong>{" "}
-            {content.similar.map((s) => (
-              <button key={s.question_id} className="chip" onClick={() => openQuestion(s.no)}>
-                {s.no}번
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-    );
-  }
   return (
     <div>
-      <button className="btn ghost" onClick={run} disabled={loading}>
-        {loading ? "AI 해설 생성 중..." : "🤖 AI 해설 보기 (RAG)"}
-      </button>
+      <div className="ai-explain-toolbar">
+        <div className="rag-mode-buttons compact">
+          <button
+            type="button"
+            className={`rag-mode-btn ${searchMode === "hybrid" ? "active hybrid" : ""}`}
+            onClick={() => setSearchMode("hybrid")}
+            disabled={loading}
+          >
+            ⚡ Hybrid {topHybrid !== null && <strong>{topHybrid.toFixed(3)} ({(topHybrid * 100).toFixed(1)}%)</strong>}
+          </button>
+          <button
+            type="button"
+            className={`rag-mode-btn ${searchMode === "dense" ? "active dense" : ""}`}
+            onClick={() => setSearchMode("dense")}
+            disabled={loading}
+          >
+            🧠 Dense {topDense !== null && <strong>{topDense.toFixed(3)} ({(topDense * 100).toFixed(1)}%)</strong>}
+          </button>
+          <button
+            type="button"
+            className={`rag-mode-btn ${searchMode === "sparse" ? "active sparse" : ""}`}
+            onClick={() => setSearchMode("sparse")}
+            disabled={loading}
+          >
+            🔤 Sparse {topSparse !== null && <strong>{topSparse.toFixed(3)} ({(topSparse * 100).toFixed(1)}%)</strong>}
+          </button>
+        </div>
+        <div className="rag-alpha-inline">
+          <span className="small muted">
+            Dense {Math.round(alpha * 100)}:{Math.round((1 - alpha) * 100)} Sparse
+          </span>
+          <input
+            type="range"
+            min="0"
+            max="1"
+            step="0.1"
+            value={alpha}
+            onChange={(e) => setAlpha(parseFloat(e.target.value))}
+            disabled={loading}
+            className="rag-alpha-slider small"
+          />
+          {topHybrid !== null && (
+            <span className="inline-hybrid-badge" title={`TOP 1 유사문제(#${topItem.no}번) 기준 Hybrid Score`}>
+              🟣 Hybrid Score: <strong>{topHybrid.toFixed(3)}</strong> ({(topHybrid * 100).toFixed(1)}%)
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          className="btn ghost"
+          onClick={() => setShowChart((v) => !v)}
+        >
+          {showChart ? "📊 막대그래프 숨기기" : "📊 막대그래프 보기"}
+        </button>
+        <button className="btn ghost" onClick={() => run(searchMode)} disabled={loading}>
+          {loading ? "AI 해설 생성 중..." : content ? "🔄 AI 해설 다시 생성" : "🤖 AI 해설 보기 (RAG)"}
+        </button>
+      </div>
       {error && <div className="error-text">{error}</div>}
+      {showChart && liveSimilar.length > 0 && (
+        <div style={{ marginTop: 12 }}>
+          <ScoreBarChart
+            items={liveSimilar}
+            searchMode={searchMode}
+            alpha={alpha}
+            title="유사 근거 문제 검색 스코어 (Dense vs Sparse vs Hybrid)"
+          />
+        </div>
+      )}
+      {content && (
+        <div className="ai-explain">
+          <h4>🤖 AI 튜터 해설</h4>
+          <div className="ai-answer">{content.answer || (loading ? "생성 중..." : "")}</div>
+        </div>
+      )}
     </div>
   );
 }

@@ -127,8 +127,18 @@ export default function Study() {
             key={active.id}
             q={active}
             onAnswered={(ua, ic) => handleAnswered(active.id, ua, ic)}
-            aiExplain={(id, wrong, onDelta) =>
-              postStream("/rag/explain", { questionId: id, wrongAnswer: wrong, stream: true }, { onDelta })
+            aiExplain={(id, wrong, onDelta, opts = {}) =>
+              postStream(
+                "/rag/explain",
+                {
+                  questionId: id,
+                  wrongAnswer: wrong,
+                  stream: true,
+                  searchMode: opts.searchMode || "hybrid",
+                  alpha: opts.alpha ?? 0.6,
+                },
+                { onDelta, onMeta: opts.onMeta }
+              )
             }
             onNext={goNext}
             onPrev={goPrev}
