@@ -139,6 +139,19 @@ export default function Study() {
         </div>
       ) : (
         <div className="q-list">
+          {!loading && data && (
+            <div className="pager top">
+              <button className="btn" disabled={page <= 1} onClick={() => setPage(page - 1)}>
+                ← 이전
+              </button>
+              <span className="muted">
+                {page} / {totalPages}
+              </span>
+              <button className="btn" disabled={page >= totalPages} onClick={() => setPage(page + 1)}>
+                다음 →
+              </button>
+            </div>
+          )}
           {loading && <p className="muted">로딩 중...</p>}
           {!loading && data?.items.map((q) => (
             <div key={q.id} className="q-list-item">

@@ -161,6 +161,7 @@ select:focus, input:focus { outline: none; border-color: var(--primary); box-sha
 }
 .q-list-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .pager { display: flex; align-items: center; gap: 12px; justify-content: center; margin-top: 18px; }
+.pager.top { margin-top: 0; margin-bottom: 6px; }
 
 .tag {
   font-size: 11px;
