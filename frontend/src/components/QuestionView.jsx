@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { get, imageUrl } from "../api";
 import { openQuestion } from "../nav";
 import ScoreBarChart from "./ScoreBarChart.jsx";
+import ModelSelect from "./ModelSelect.jsx";
 
 export default function QuestionView({
   q: item,
@@ -207,12 +208,13 @@ function AIExplain({ id, wrongAnswer, explainer }) {
         wrongAnswer,
         (chunk) => {
           bufRef.current += chunk;
-          setContent({
+          setContent((prev) => ({
             answer: bufRef.current,
             similar: latestSimilar,
             searchMode: activeMode,
             alpha,
-          });
+            llm: prev?.llm || null,
+          }));
         },
         {
           searchMode: activeMode,
@@ -224,6 +226,7 @@ function AIExplain({ id, wrongAnswer, explainer }) {
               similar: latestSimilar,
               searchMode: m.searchMode || activeMode,
               alpha: m.alpha ?? alpha,
+              llm: m.llm || null,
             });
           },
         }
@@ -233,6 +236,7 @@ function AIExplain({ id, wrongAnswer, explainer }) {
         similar: meta ? meta.similar || latestSimilar : latestSimilar,
         searchMode: meta?.searchMode || activeMode,
         alpha: meta?.alpha ?? alpha,
+        llm: meta?.llm || null,
       });
     } catch (e) {
       setError(e.message || "실패");
@@ -247,6 +251,7 @@ function AIExplain({ id, wrongAnswer, explainer }) {
         <button className="btn ghost" onClick={() => run(searchMode)} disabled={loading}>
           {loading ? "AI 해설 생성 중..." : content ? "🔄 AI 해설 다시 생성" : "🤖 AI 해설 보기 (RAG)"}
         </button>
+        <ModelSelect compact disabled={loading} />
         <div className="rag-mode-buttons compact">
           <button
             type="button"
@@ -316,7 +321,7 @@ function AIExplain({ id, wrongAnswer, explainer }) {
       )}
       {content && (
         <div className="ai-explain">
-          <h4>🤖 AI 튜터 해설</h4>
+          <h4>🤖 AI 튜터 해설{content.llm && <span className="llm-tag"> · {content.llm.label}</span>}</h4>
           <div className="ai-answer">{content.answer || (loading ? "생성 중..." : "")}</div>
         </div>
       )}

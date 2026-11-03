@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { post, postStream } from "../api";
 import ScoreBarChart from "../components/ScoreBarChart.jsx";
+import ModelSelect from "../components/ModelSelect.jsx";
 
 export default function AITutor() {
   const [query, setQuery] = useState("");
@@ -38,6 +39,7 @@ export default function AITutor() {
                 similar: latestSimilar,
                 searchMode: m.searchMode || curMode,
                 alpha: m.alpha ?? curAlpha,
+                llm: m.llm || null,
               },
             ]);
           },
@@ -46,6 +48,7 @@ export default function AITutor() {
             setChat((c) => [
               ...c.slice(0, -1),
               {
+                ...c[c.length - 1],
                 role: "ai",
                 text: acc,
                 similar: latestSimilar,
@@ -64,6 +67,7 @@ export default function AITutor() {
           similar: meta.similar || latestSimilar,
           searchMode: meta.searchMode || curMode,
           alpha: meta.alpha ?? curAlpha,
+          llm: meta.llm,
         },
       ]);
     } catch (e) {
@@ -139,6 +143,9 @@ export default function AITutor() {
       {/* 검색 방식 및 가중치 설정 패널 */}
       <div className="rag-control-panel">
         <div className="rag-mode-group">
+          <ModelSelect disabled={loading} />
+        </div>
+        <div className="rag-mode-group">
           <span className="rag-control-label">검색 엔진 모드:</span>
           <div className="rag-mode-buttons">
             <button
@@ -203,6 +210,7 @@ export default function AITutor() {
           {chat.map((m, i) => (
             <div key={i} className={`msg ${m.role}`}>
               <div className="msg-bubble">{m.text}</div>
+              {m.role === "ai" && m.llm && <div className="llm-tag">🤖 답변 모델: {m.llm.label}</div>}
               {m.role === "ai" && m.similar && m.similar.length > 0 && (
                 <div className="msg-chart-wrap">
                   <ScoreBarChart

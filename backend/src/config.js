@@ -23,6 +23,19 @@ module.exports = {
     baseUrl: process.env.LLM_BASE_URL || "http://localhost:3001/v1",
     apiKey: process.env.LLM_API_KEY || "",
     model: process.env.LLM_MODEL || "auto",
+    // 화면에서 선택 가능한 FreeLLMAPI 모델 목록 (LLM_MODEL은 항상 포함)
+    models: (process.env.LLM_MODELS || "")
+      .split(",")
+      .map((m) => m.trim())
+      .filter(Boolean),
+    // 클라우드 LLM 응답 길이·근거 문항 수 (로컬 Ollama는 OLLAMA_NUM_PREDICT/OLLAMA_CONTEXT_ITEMS)
+    numPredict: Number(process.env.LLM_NUM_PREDICT || 800),
+    contextItems: Number(process.env.LLM_CONTEXT_ITEMS || 4),
+    // 화면에서 선택 가능한 로컬 Ollama 채팅 모델 목록
+    ollamaModels: (process.env.LLM_OLLAMA_MODELS || "qwen2.5:3b,qwen2.5:1.5b,openbmb/minicpm-v4")
+      .split(",")
+      .map((m) => m.trim())
+      .filter(Boolean),
   },
   data: {
     bankJson: process.env.BANK_JSON || "/app/data/bank.json",

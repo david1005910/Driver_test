@@ -1,3 +1,5 @@
+import { getLlmChoice } from "./llmChoice";
+
 const BASE = "/api";
 
 async function request(path, options = {}) {
@@ -21,10 +23,12 @@ export const del = (path) => request(path, { method: "DELETE" });
 
 export function postStream(path, body, handlers = {}) {
   const { onDelta, onMeta } = handlers;
+  // 선택된 답변 모델을 함께 전송 (미선택이면 서버 기본 모델)
+  const payload = { llm: getLlmChoice() || undefined, ...body };
   return fetch(`${BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify(payload),
   }).then(async (res) => {
     if (!res.ok) {
       let errBody = null;
@@ -62,6 +66,7 @@ export function postStream(path, body, handlers = {}) {
     }
     return {
       similar: meta ? meta.similar : null,
+      llm: meta?.llm || null,
       searchMode: meta?.searchMode || "hybrid",
       alpha: meta?.alpha ?? 0.6,
     };

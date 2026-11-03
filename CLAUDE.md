@@ -39,12 +39,16 @@ docker compose down -v                                     # wipe the DB volume 
 
 **RAG** (`services/`):
 - `ollama.js` calls Ollama's `/api/embed` and `/api/chat` directly with `fetch`. Default options are `temperature 0`, `top_p 0.1`.
-- `llm.js` is the chat-provider layer that `ragService.js` calls (`chat`, `chatStream`).
-  - `LLM_PROVIDER=ollama` (the default) uses `ollama.js`.
-  - `LLM_PROVIDER=openai` sends chat to an OpenAI-compatible `/v1/chat/completions` (`LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL`). On this machine that is a local FreeLLMAPI router at `127.0.0.1:3001` serving Gemini, configured in the gitignored `.env`.
-  - Embeddings always stay on Ollama `nomic-embed-text`, because the stored vectors depend on that model.
-  - Gemini "thinking" models (e.g. `gemini-3.5-flash`) spend hidden reasoning tokens against `max_tokens`. That cuts answers short, so the setup pins `gemini-3.5-flash-lite`.
-  - `OLLAMA_NUM_PREDICT` sets the answer token cap for either provider. `OLLAMA_CONTEXT_ITEMS` sets how many retrieved questions go into the LLM prompt; the chart still shows all `k`.
+- `llm.js` is the chat-provider layer that `ragService.js` calls (`chat`, `chatStream`). Every request resolves a model choice through `resolveTarget(id)`, an allowlist that falls back to the default for unknown ids.
+  - **Choices:** `freellmapi:<model>` goes to an OpenAI-compatible `/v1/chat/completions`, using `LLM_MODEL` plus `LLM_MODELS`. `ollama:<model>` goes to `ollama.js`, using `OLLAMA_CHAT_MODEL` plus `LLM_OLLAMA_MODELS`.
+  - **Default:** `LLM_PROVIDER` decides it.
+  - **This machine:** a local FreeLLMAPI router at `127.0.0.1:3001` serves Gemini. Its key and model list live in the gitignored `.env`. Compose only passes variables listed under `environment:`, so a new variable must also be added to `docker-compose.linux.yml`.
+  - **Model list:** `GET /api/rag/models` lists the choices and whether each Ollama model is installed.
+  - **Frontend:** `components/ModelSelect.jsx` holds the choice in `llmChoice.js` (stored in `localStorage`). `api.js` `postStream()` adds it as `llm` to every `/rag/explain` and `/rag/ask` request. The SSE `meta`/`done` events return the `llm` that answered.
+  - **Limits per provider:** cloud models use `LLM_NUM_PREDICT`/`LLM_CONTEXT_ITEMS` (800/4). Local models use `OLLAMA_NUM_PREDICT`/`OLLAMA_CONTEXT_ITEMS` (400/2 in the Linux override, because of the 4 GB RAM). The chart still shows all `k` results.
+  - **Timeouts:** Ollama calls use an `undici` Agent with no headers/body timeout. Local models on this PC can take more than 5 minutes before the first token, which used to hit Node fetch's 300 s `headersTimeout`.
+  - **Gemini thinking models:** models such as `gemini-3.5-flash` spend hidden reasoning tokens against `max_tokens`, which cuts answers short. Only `*-flash-lite` models are offered.
+  - **Embeddings:** these always stay on Ollama `nomic-embed-text`, because the stored vectors depend on that model.
 - `embedService.js` does hybrid retrieval. It loads every embedding and builds an in-memory BM25 index once (`cachedCorpus`); `buildEmbedding` invalidates that cache.
   - Dense score: cosine similarity over normalized vectors.
   - Sparse score: BM25 with a hand-written Korean tokenizer (suffix stripping, a stopword list, and 2-gram subword terms prefixed `bg:`).

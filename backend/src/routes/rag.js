@@ -10,7 +10,7 @@ const {
   getQuestionById,
 } = require("../services/ragService");
 const { isAvailable } = require("../services/ollama");
-const { describe: describeLlm } = require("../services/llm");
+const { describe: describeLlm, listOptions: listLlmOptions } = require("../services/llm");
 const { count: embeddingCount } = require("../services/embedService");
 
 const router = express.Router();
@@ -48,6 +48,15 @@ router.get("/status", async (req, res) => {
 });
 
 // 특정 문항 기준 유사 문항 Dense / Sparse / Hybrid 스코어 즉시 조회 API
+// 답변에 사용할 수 있는 채팅 모델 목록 (FreeLLMAPI + 로컬 Ollama 모델, 설치 여부 포함)
+router.get("/models", async (req, res) => {
+  try {
+    res.json(await listLlmOptions());
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get("/scores/:questionId", async (req, res) => {
   try {
     const questionId = Number(req.params.questionId);
@@ -91,12 +100,12 @@ router.post("/search", async (req, res) => {
 // 틀린 문제 RAG 해설 (stream: true 시 SSE)
 router.post("/explain", async (req, res) => {
   try {
-    const { questionId, wrongAnswer, stream, searchMode = "hybrid", alpha = 0.6, k = 4 } = req.body;
+    const { questionId, wrongAnswer, stream, searchMode = "hybrid", alpha = 0.6, k = 4, llm } = req.body;
     if (!questionId) return res.status(400).json({ error: "questionId required" });
     const q = await getQuestionById(questionId);
     if (!q) return res.status(404).json({ error: "question not found" });
 
-    const searchOpts = { searchMode, alpha: Number(alpha), k: Number(k) || 4 };
+    const searchOpts = { searchMode, alpha: Number(alpha), k: Number(k) || 4, llm };
 
     if (!stream) {
       const result = await explainWrongQuestion(q, wrongAnswer || [1], searchOpts);
@@ -118,6 +127,7 @@ router.post("/explain", async (req, res) => {
             similar: metaInit.similar,
             searchMode: metaInit.searchMode,
             alpha: metaInit.alpha,
+            llm: metaInit.llm,
           })}\n\n`
         );
       }
@@ -128,6 +138,7 @@ router.post("/explain", async (req, res) => {
         similar: meta.similar,
         searchMode: meta.searchMode,
         alpha: meta.alpha,
+        llm: meta.llm,
       })}\n\n`
     );
     res.end();
@@ -143,10 +154,10 @@ router.post("/explain", async (req, res) => {
 // 자유 질문 (RAG 기반 답변, stream: true 시 SSE)
 router.post("/ask", async (req, res) => {
   try {
-    const { query, stream, searchMode = "hybrid", alpha = 0.6, k = 4 } = req.body;
+    const { query, stream, searchMode = "hybrid", alpha = 0.6, k = 4, llm } = req.body;
     if (!query || !query.trim()) return res.status(400).json({ error: "query required" });
 
-    const searchOpts = { searchMode, alpha: Number(alpha), k: Number(k) || 4 };
+    const searchOpts = { searchMode, alpha: Number(alpha), k: Number(k) || 4, llm };
 
     if (!stream) {
       const result = await askFreeForm(query.trim(), searchOpts);
@@ -167,6 +178,7 @@ router.post("/ask", async (req, res) => {
             similar: metaInit.similar,
             searchMode: metaInit.searchMode,
             alpha: metaInit.alpha,
+            llm: metaInit.llm,
           })}\n\n`
         );
       }
@@ -177,6 +189,7 @@ router.post("/ask", async (req, res) => {
         similar: meta.similar,
         searchMode: meta.searchMode,
         alpha: meta.alpha,
+        llm: meta.llm,
       })}\n\n`
     );
     res.end();

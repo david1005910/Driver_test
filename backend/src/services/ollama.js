@@ -1,4 +1,9 @@
+const { Agent } = require("undici");
 const config = require("../config");
+
+// 저사양 PC에서 로컬 모델은 첫 토큰까지(프롬프트 처리) 5분 이상 걸릴 수 있어
+// Node fetch 기본 headersTimeout(300초)을 해제한다
+const dispatcher = new Agent({ headersTimeout: 0, bodyTimeout: 0 });
 
 async function fetchJson(path, body) {
   const url = `${config.ollama.baseUrl}${path}`;
@@ -6,6 +11,7 @@ async function fetchJson(path, body) {
     method: body ? "POST" : "GET",
     headers: { "Content-Type": "application/json" },
     body: body ? JSON.stringify(body) : undefined,
+    dispatcher,
   });
   if (!res.ok) {
     throw new Error(`ollama ${path} failed: ${res.status} ${await res.text()}`);
@@ -31,9 +37,15 @@ async function isAvailable() {
   }
 }
 
-async function generate({ prompt, system, stream, options = {} }) {
+// 설치된 모델 이름 목록 (모델 선택 화면의 설치 여부 표시용)
+async function listModels() {
+  const data = await fetchJson("/api/tags");
+  return (data.models || []).map((m) => m.name);
+}
+
+async function generate({ prompt, system, stream, model, options = {} }) {
   return fetchJson("/api/chat", {
-    model: config.ollama.chatModel,
+    model: model || config.ollama.chatModel,
     messages: [
       ...(system ? [{ role: "system", content: system }] : []),
       { role: "user", content: prompt },
@@ -44,13 +56,13 @@ async function generate({ prompt, system, stream, options = {} }) {
   });
 }
 
-async function generateStream({ prompt, system, options = {} }) {
+async function generateStream({ prompt, system, model, options = {} }) {
   const url = `${config.ollama.baseUrl}/api/chat`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      model: config.ollama.chatModel,
+      model: model || config.ollama.chatModel,
       messages: [
         ...(system ? [{ role: "system", content: system }] : []),
         { role: "user", content: prompt },
@@ -59,6 +71,7 @@ async function generateStream({ prompt, system, options = {} }) {
       keep_alive: config.ollama.keepAlive,
       options: { temperature: 0.0, top_p: 0.1, repeat_penalty: 1.2, ...options },
     }),
+    dispatcher,
   });
   if (!res.ok) {
     throw new Error(`ollama /api/chat failed: ${res.status} ${await res.text()}`);
@@ -66,4 +79,4 @@ async function generateStream({ prompt, system, options = {} }) {
   return res.body.getReader();
 }
 
-module.exports = { embed, generate, generateStream, isAvailable, fetchJson };
+module.exports = { embed, generate, generateStream, isAvailable, listModels, fetchJson };
