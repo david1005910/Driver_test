@@ -1,9 +1,10 @@
 const { getPool } = require("../db");
-const { generate, generateStream } = require("./ollama");
+const config = require("../config");
+const { chat, chatStream } = require("./llm");
 const { retrieveSimilar, questionToText } = require("./embedService");
 
-// 생성 토큰 상한. 각 보기(1~4번) 항목별 세부 해설 출력을 위해 800토큰으로 상향
-const MAX_TOKENS = 800;
+// 생성 토큰 상한 (기본 800, 저사양 환경은 OLLAMA_NUM_PREDICT로 축소)
+const MAX_TOKENS = config.ollama.numPredict;
 
 const SYSTEM_PROMPT = `너는 대한민국 운전면허 학과시험(필기시험) 전문 AI 튜터야.
 
@@ -108,37 +109,7 @@ function toSimilarMeta(similar) {
 }
 
 async function streamChat(prompt, onDelta) {
-  const reader = await generateStream({ prompt, system: SYSTEM_PROMPT, options: { num_predict: MAX_TOKENS } });
-  const decoder = new TextDecoder();
-  let buf = "";
-  let modelDone = false;
-  while (!modelDone) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    buf += decoder.decode(value, { stream: true });
-    let idx;
-    while ((idx = buf.indexOf("\n")) !== -1) {
-      const line = buf.slice(0, idx).trim();
-      buf = buf.slice(idx + 1);
-      if (!line) continue;
-      try {
-        const data = JSON.parse(line);
-        if (data.message && data.message.content) onDelta(data.message.content);
-        if (data.done) {
-          modelDone = true;
-          break;
-        }
-      } catch (e) {}
-    }
-  }
-  // done 직후 버퍼에 남은 마지막 조각(청크 경계에서 잘린 부분)까지 반영
-  const tail = buf + decoder.decode();
-  if (tail.trim()) {
-    try {
-      const data = JSON.parse(tail.trim());
-      if (data.message && data.message.content) onDelta(data.message.content);
-    } catch (e) {}
-  }
+  await chatStream({ prompt, system: SYSTEM_PROMPT, maxTokens: MAX_TOKENS }, onDelta);
 }
 
 async function retrieveForRag(queryText, k = 4, excludeId = null, searchOpts = {}) {
@@ -146,7 +117,8 @@ async function retrieveForRag(queryText, k = 4, excludeId = null, searchOpts = {
   const alpha = typeof searchOpts.alpha === "number" ? searchOpts.alpha : 0.6;
   const similar = await retrieveSimilar(queryText, k, excludeId, 0.45, { searchMode, alpha });
   if (similar.length > 0) {
-    return { contextItems: similar, chartItems: similar };
+    // LLM 프롬프트에는 상위 N개만 넣어 프롬프트 처리 시간을 줄이고, 그래프에는 k개 전체 표시
+    return { contextItems: similar.slice(0, config.ollama.contextItems), chartItems: similar };
   }
   // 임계값 미달 시에도 막대그래프 확인을 위해 상위 후보를 반환하되, LLM 컨텍스트에는 넣지 않음
   const fallback = await retrieveSimilar(queryText, k, excludeId, 0, {
@@ -163,17 +135,17 @@ async function retrieveForRag(queryText, k = 4, excludeId = null, searchOpts = {
 async function explainWrongQuestion(q, wrongAnswer, searchOpts = {}) {
   const k = searchOpts.k || 4;
   const { contextItems, chartItems } = await retrieveForRag(questionToText(q), k, q.id, searchOpts);
-  const res = await generate({
+  const answer = await chat({
     prompt: buildExplainPrompt(q, wrongAnswer, contextItems),
     system: SYSTEM_PROMPT,
-    options: { num_predict: MAX_TOKENS },
+    maxTokens: MAX_TOKENS,
   });
   return {
     question_id: q.id,
     similar: toSimilarMeta(chartItems),
     searchMode: searchOpts.searchMode || "hybrid",
     alpha: typeof searchOpts.alpha === "number" ? searchOpts.alpha : 0.6,
-    answer: res.message ? res.message.content : "",
+    answer,
   };
 }
 
@@ -195,16 +167,16 @@ async function explainWrongQuestionStream(q, wrongAnswer, onDelta, searchOpts = 
 async function askFreeForm(query, searchOpts = {}) {
   const k = searchOpts.k || 4;
   const { contextItems, chartItems } = await retrieveForRag(query, k, null, searchOpts);
-  const res = await generate({
+  const answer = await chat({
     prompt: buildAskPrompt(query, contextItems),
     system: SYSTEM_PROMPT,
-    options: { num_predict: MAX_TOKENS },
+    maxTokens: MAX_TOKENS,
   });
   return {
     similar: toSimilarMeta(chartItems),
     searchMode: searchOpts.searchMode || "hybrid",
     alpha: typeof searchOpts.alpha === "number" ? searchOpts.alpha : 0.6,
-    answer: res.message ? res.message.content : "",
+    answer,
   };
 }
 

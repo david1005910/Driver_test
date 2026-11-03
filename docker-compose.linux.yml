@@ -1,0 +1,29 @@
+# Linux 호스트용 오버라이드: api/web을 호스트 네트워크로 실행해 호스트 Ollama(127.0.0.1:11434)에 직접 접근
+# 사용: docker compose -f docker-compose.yml -f docker-compose.linux.yml up -d
+services:
+  api:
+    network_mode: host
+    ports: !reset []
+    extra_hosts: !reset []
+    environment:
+      PORT: 3002
+      DB_HOST: 127.0.0.1
+      DB_PORT: 3307
+      # 다른 PC의 Ollama 사용 시: OLLAMA_URL=http://<IP>:11434 docker compose -f docker-compose.yml -f docker-compose.linux.yml up -d api
+      OLLAMA_URL: ${OLLAMA_URL:-http://127.0.0.1:11434}
+      OLLAMA_CHAT_MODEL: ${OLLAMA_CHAT_MODEL:-qwen2.5:3b}
+      # 채팅을 FreeLLMAPI(OpenAI 호환, 127.0.0.1:3001)로 보내려면 .env에 LLM_PROVIDER=openai, LLM_API_KEY=<unified key> 설정
+      LLM_PROVIDER: ${LLM_PROVIDER:-ollama}
+      LLM_BASE_URL: ${LLM_BASE_URL:-http://127.0.0.1:3001/v1}
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_MODEL: ${LLM_MODEL:-auto}
+      # 저사양(RAM 4GB) 호스트용: 짧은 응답 + LLM 근거 문항 축소 + 모델 메모리 상주 시간 연장
+      OLLAMA_NUM_PREDICT: ${OLLAMA_NUM_PREDICT:-400}
+      OLLAMA_CONTEXT_ITEMS: ${OLLAMA_CONTEXT_ITEMS:-2}
+      OLLAMA_KEEP_ALIVE: 30m
+
+  web:
+    network_mode: host
+    ports: !reset []
+    environment:
+      VITE_API_PROXY: http://127.0.0.1:3002

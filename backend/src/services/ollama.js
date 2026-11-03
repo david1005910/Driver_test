@@ -39,6 +39,7 @@ async function generate({ prompt, system, stream, options = {} }) {
       { role: "user", content: prompt },
     ],
     stream: stream || false,
+    keep_alive: config.ollama.keepAlive,
     options: { temperature: 0.0, top_p: 0.1, repeat_penalty: 1.2, ...options },
   });
 }
@@ -55,6 +56,7 @@ async function generateStream({ prompt, system, options = {} }) {
         { role: "user", content: prompt },
       ],
       stream: true,
+      keep_alive: config.ollama.keepAlive,
       options: { temperature: 0.0, top_p: 0.1, repeat_penalty: 1.2, ...options },
     }),
   });

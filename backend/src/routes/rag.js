@@ -10,6 +10,7 @@ const {
   getQuestionById,
 } = require("../services/ragService");
 const { isAvailable } = require("../services/ollama");
+const { describe: describeLlm } = require("../services/llm");
 const { count: embeddingCount } = require("../services/embedService");
 
 const router = express.Router();
@@ -39,6 +40,7 @@ router.get("/status", async (req, res) => {
       total_questions: totalQ,
       ready: ollamaUp && embedded === totalQ,
       searchModes: ["hybrid", "dense", "sparse"],
+      llm: describeLlm(),
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -130,7 +132,7 @@ router.post("/explain", async (req, res) => {
     );
     res.end();
   } catch (err) {
-    if (err.message === "EMBEDDINGS_EMPTY") {
+    if (err.message === "EMBEDDINGS_EMPTY" && !res.headersSent) {
       return res.status(409).json({ error: "EMBEDDINGS_EMPTY", message: "임베딩이 아직 생성되지 않았습니다. /api/rag/embed를 먼저 실행하세요." });
     }
     sseError(res, err.message);
@@ -179,7 +181,7 @@ router.post("/ask", async (req, res) => {
     );
     res.end();
   } catch (err) {
-    if (err.message === "EMBEDDINGS_EMPTY") {
+    if (err.message === "EMBEDDINGS_EMPTY" && !res.headersSent) {
       return res.status(409).json({ error: "EMBEDDINGS_EMPTY", message: "임베딩이 아직 생성되지 않았습니다. /api/rag/embed를 먼저 실행하세요." });
     }
     sseError(res, err.message);
